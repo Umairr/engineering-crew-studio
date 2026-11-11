@@ -5,7 +5,7 @@ description = "An AI engineering team (CrewAI) that designs, builds, tests, revi
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "crewai[tools]==1.14.4",
+    "crewai[tools,anthropic,google-genai]==1.14.4",
     "gradio>=6.0",
     "python-dotenv>=1.0",
 ]

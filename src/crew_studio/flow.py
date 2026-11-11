@@ -83,6 +83,7 @@ class StudioFlow(Flow[StudioState]):
     @start()
     def prepare_workspace(self):
         register_listeners()
+        PROGRESS.log(f"🧠 Model: {settings.describe_llm()}")
         ws = self.ws
         if self.state.mode == "build":
             PROGRESS.log(f"🏗️  Creating fresh workspace '{ws.name}' (uv project + gradio)…")

@@ -51,18 +51,34 @@ Gradio 6 notes (changed from older versions):
 - If unsure about any API, check it with Context7 (library id for gradio) instead of guessing."""
 
 
-def _llm() -> LLM:
-    return LLM(model=settings.MODEL)
+def _llm(model: str | None = None) -> LLM:
+    """Build the LLM for the configured provider (see settings.PROVIDERS)."""
+    cfg = settings.PROVIDERS[settings.PROVIDER]
+    kwargs: dict = {}
+    if settings.PROVIDER != "openai":
+        kwargs["max_tokens"] = settings.MAX_TOKENS
+    if cfg.get("base_url"):  # OpenAI-compatible provider without native CrewAI support (Grok)
+        kwargs["base_url"] = cfg["base_url"]
+    if settings.PROVIDER != "ollama":
+        key = settings.provider_api_key()
+        if not key:
+            raise RuntimeError(f"STUDIO_PROVIDER={settings.PROVIDER} needs one of: {', '.join(cfg['keys'])}")
+        kwargs["api_key"] = key
+    # Explicit provider: skips CrewAI's built-in model-name list, so new models (e.g. grok-4.7,
+    # claude-opus-5-5) work without waiting for a CrewAI release.
+    return LLM(model=model or settings.MODEL, provider=cfg["prefix"], **kwargs)
 
 
-def _agent(key: str, *, tools=None, extra: str = "", mcps=None, max_iter: int | None = None) -> Agent:
+def _agent(
+    key: str, *, tools=None, extra: str = "", mcps=None, max_iter: int | None = None, model: str | None = None
+) -> Agent:
     cfg = {k: v.strip() for k, v in AGENTS[key].items()}  # YAML ">" adds a trailing newline
     cfg["backstory"] = cfg["backstory"] + extra
     return Agent(
         role=cfg["role"],
         goal=cfg["goal"],
         backstory=cfg["backstory"],
-        llm=_llm(),
+        llm=_llm(model),
         tools=tools or [],
         mcps=mcps or None,
         allow_delegation=False,
@@ -88,7 +104,7 @@ def _context7() -> list[str] | None:
 
 def _manager() -> Agent:
     # The manager must have no tools of its own; CrewAI gives it delegation tools.
-    lead = _agent("engineering_lead", max_iter=settings.MANAGER_MAX_ITER)
+    lead = _agent("engineering_lead", max_iter=settings.MANAGER_MAX_ITER, model=settings.MANAGER_MODEL)
     lead.allow_delegation = True
     return lead
 
@@ -106,7 +122,7 @@ def _builders(ws: Workspace, roles: list[str]) -> list[Agent]:
 
 # ------------------------------------------------------------------- crews
 def planning_crew() -> Crew:
-    architect = _agent("architect", extra=GRADIO_GUIDE, mcps=_context7(), max_iter=10)
+    architect = _agent("architect", extra=GRADIO_GUIDE, mcps=_context7(), max_iter=10, model=settings.MANAGER_MODEL)
     plan = _task("plan_system", architect, output_pydantic=SystemPlan)
     return Crew(agents=[architect], tasks=[plan], process=Process.sequential, verbose=True)
 

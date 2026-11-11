@@ -254,7 +254,19 @@ def build_app() -> gr.Blocks:
 
 
 def launch() -> None:
-    build_app().queue().launch(css=CSS, theme=gr.themes.Soft(primary_hue="sky"))
+    """Local by default. When a hosting platform sets PORT, listen on 0.0.0.0.
+    Set APP_USERNAME / APP_PASSWORD to require a login - strongly recommended when hosted,
+    because every build spends your LLM credits and runs generated code."""
+    opts: dict = {}
+    port = os.getenv("PORT")
+    if port:
+        opts.update(server_name="0.0.0.0", server_port=int(port))
+    user, password = os.getenv("APP_USERNAME"), os.getenv("APP_PASSWORD")
+    if user and password:
+        opts["auth"] = (user, password)
+    elif port:
+        print("⚠️  Hosted without APP_USERNAME/APP_PASSWORD: anyone with the URL can run builds on your API key.")
+    build_app().queue().launch(css=CSS, theme=gr.themes.Soft(primary_hue="sky"), **opts)
 
 
 if __name__ == "__main__":

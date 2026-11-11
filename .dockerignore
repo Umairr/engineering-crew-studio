@@ -1,0 +1,10 @@
+.env
+.venv
+.git
+__pycache__
+*.pyc
+.DS_Store
+.gradio
+workspaces
+docs
+tests

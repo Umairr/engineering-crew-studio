@@ -237,6 +237,79 @@ All settings are read from `.env`:
 | `STUDIO_USE_CONTEXT7` | `1` | Live framework documentation for the architect and frontend engineer |
 | `STUDIO_AGENT_MAX_ITER` | `25` | Iteration cap per agent |
 | `STUDIO_MANAGER_MAX_ITER` | `20` | Iteration cap for the Engineering Lead |
+| `APP_USERNAME`, `APP_PASSWORD` | none | Login screen for hosted deployments |
+
+---
+
+## Deployment
+
+The studio ships as a container image that includes `uv`, which it needs to create each product's own project. Inside the container it runs generated code locally (`STUDIO_RUNNER=local`), isolated from the host. It keeps generated products in `/data/workspaces`.
+
+Hosting the studio has three requirements:
+
+1. **A login.** Set `APP_USERNAME` and `APP_PASSWORD`. Every build spends your LLM credits and runs generated code, so never expose it publicly without them.
+2. **Persistent storage** for `/data`, so products survive restarts and you can keep iterating on them.
+3. **No short request timeouts.** A full build takes several minutes, which rules out platforms that cut requests after a minute or two.
+
+### Where to host it
+
+| Platform | Fit | Notes |
+|---|---|---|
+| **AWS EC2 / Lightsail** | ✅ Recommended | Persistent disk, no time limits, full control |
+| **AWS ECS on Fargate + EFS** | ✅ Managed AWS | Mount EFS at `/data`; put an Application Load Balancer in front with a long idle timeout |
+| **Railway / Fly.io / Render (paid)** | ✅ Simple | Attach a volume at `/data` |
+| **Hugging Face Spaces** | ⚠️ Demos | Use a private Space with persistent storage and upgraded hardware |
+| **AWS App Runner / Google Cloud Run** | ❌ Not a good fit | Request time limits and ephemeral disk interrupt long builds |
+
+The **Launch app** button starts a generated product on an internal port, which hosted setups don't expose. On a server, use the Workspace tab to review the code, or run a product from its folder in `/data/workspaces`.
+
+### Run with Docker (any server)
+
+```bash
+docker build -t engineering-crew-studio .
+docker run -d --name studio -p 7860:7860 --env-file .env \
+  -e APP_USERNAME=admin -e APP_PASSWORD='choose-a-strong-password' \
+  -v studio-data:/data engineering-crew-studio
+# open http://localhost:7860 and sign in
+```
+
+### AWS: EC2 or Lightsail (recommended)
+
+Use an Ubuntu instance with at least 4 GB RAM and 30 GB of disk (each product gets its own Python environment), with ports 80 and 443 open:
+
+```bash
+sudo apt-get update && sudo apt-get install -y docker.io git caddy
+git clone https://github.com/<your-username>/engineering-crew-studio.git && cd engineering-crew-studio
+cp .env.example .env && nano .env           # provider + key, APP_USERNAME, APP_PASSWORD
+sudo docker build -t engineering-crew-studio .
+sudo docker run -d --restart unless-stopped --name studio \
+  -p 127.0.0.1:7860:7860 --env-file .env -v studio-data:/data engineering-crew-studio
+
+# Free HTTPS for your domain (point an A record at the instance first)
+echo 'studio.yourdomain.com {
+  reverse_proxy 127.0.0.1:7860
+}' | sudo tee /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+To update later: `git pull`, rebuild, then `docker rm -f studio` and run the same command. The `studio-data` volume keeps every product.
+
+### AWS: ECS on Fargate (managed)
+
+1. Build for `linux/amd64` and push to Amazon ECR:
+
+   ```bash
+   AWS_REGION=us-east-1
+   ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+   REPO=$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/engineering-crew-studio
+
+   aws ecr create-repository --repository-name engineering-crew-studio --region $AWS_REGION
+   aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com
+   docker buildx build --platform linux/amd64 -t $REPO:latest --push .
+   ```
+
+2. Create an **EFS** file system and an **ECS task definition** that uses the image, exposes port **7860**, mounts EFS at `/data`, and reads the keys and `APP_PASSWORD` from **Secrets Manager** (2 vCPU / 4 GB is a good start).
+3. Run it as an ECS service behind an **Application Load Balancer** with an HTTPS listener. Raise the ALB idle timeout (for example to 600 seconds) so live progress streams aren't cut during long builds.
 
 ---
 
@@ -278,6 +351,7 @@ src/crew_studio/
 examples/               # sample requirement specifications
 tests/                  # offline test suite
 docs/screenshots/       # images used in this README
+Dockerfile              # container image for EC2, ECS, Railway, Fly.io...
 ```
 
 ---

@@ -1,116 +1,212 @@
-# 🛠️ Engineering Crew Studio
+# Engineering Crew Studio
 
-An AI engineering team built with [CrewAI](https://crewai.com) that **designs, builds, tests, reviews and keeps improving** small Python + Gradio products. You give it business requirements and feedback, and it ships working code.
+**An autonomous AI engineering team that turns business requirements into working, tested software.**
 
-The project started as the *engineering team* exercise from the CrewAI section of the [Agents course](https://github.com/ed-donner/agents) and goes on to complete every part of the extension challenge:
+Engineering Crew Studio is a multi-agent system built on [CrewAI](https://crewai.com). You describe a product in plain English. A team of specialised AI agents then designs it, implements it in parallel, writes and runs unit tests, builds a web UI, reviews the result against your requirements, and keeps improving it until it meets the bar. You can then give feedback and the same team keeps working on the existing codebase.
 
-| Challenge | How it is done here |
-|---|---|
-| Hierarchical process with the **Engineering Lead as manager** | `module_crew` and `product_crew` use `Process.hierarchical` with `manager_agent=Engineering Lead`. The lead has no tools of its own. It decides who does what, delegates, checks the evidence and sends work back. |
-| New roles: **quality inspection + feedback**, looping until satisfied | A **Quality Inspector** (read and run tools only, so it can't quietly patch things) and a **Product Reviewer** return a structured `ReviewVerdict`. The flow loops review → fix → review until it is approved or the round budget runs out. |
-| **Human feedback** without wiping the sandbox | Each product lives in a persistent `workspaces/<name>/` uv project. `improve` mode keeps every file, applies your feedback, re-tests, re-reviews, and records it all in `CHANGELOG.md`. |
-| **Gradio UI** for running the crew | `uv run studio-ui` lets you write requirements, watch the team live, give feedback, browse the code and reviews, and launch the generated app with one click. |
-| **Flows** that run **multiple crews in parallel** | `StudioFlow` plans the system into modules, then runs **one hierarchical crew per module concurrently**, grouped into dependency waves. After that it integrates the UI and runs the review loop. |
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
+![CrewAI](https://img.shields.io/badge/CrewAI-1.14-orange)
+![Gradio](https://img.shields.io/badge/Gradio-6-ff7c00)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## Features
+
+- **Hierarchical team management.** An Engineering Lead agent manages the team. It breaks the work down, delegates to the right engineer, checks the evidence each engineer returns, and sends work back until it is done.
+- **Parallel development.** The system design is split into independent modules. Each module is built by its own crew, and crews run concurrently in dependency-aware waves.
+- **Built-in quality gate.** A Quality Inspector and a Product Reviewer check every build. They run the tests, exercise the UI, and check each requirement. Any blocker or major issue goes back to the team automatically.
+- **Iterative, human-in-the-loop workflow.** Projects persist between runs. You review the product, give feedback, and the team edits the existing code instead of starting over. Every change is recorded in a changelog.
+- **Web studio.** A Gradio interface for writing requirements, watching the agents work live, browsing the generated code and reviews, launching the product, and sending feedback.
+- **Sandboxed execution.** Generated code runs inside Docker containers, with an automatic fallback to isolated local environments.
+- **Cost-aware by design.** One lightweight model powers every agent, with iteration caps per agent and a configurable review budget.
+
+---
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    A[prepare workspace] -->|build| P[Architect: SystemPlan + DESIGN.md]
-    A -->|improve| H[Product crew: apply human feedback]
-    P --> M1[Module crew: module A]
-    P --> M2[Module crew: module B]
-    P --> M3[Module crew: ...]
-    M1 & M2 & M3 --> U[Product crew: build app.py]
+    A[Requirements] --> P[Architect<br/>system design + module plan]
+    P --> M1[Module crew A]
+    P --> M2[Module crew B]
+    P --> M3[Module crew …]
+    M1 & M2 & M3 --> U[Product crew<br/>web UI + integration]
     U --> R{Review crew<br/>QA Inspector + Product Reviewer}
-    H --> R
-    R -->|needs work| F[Product crew: fix issues] --> R
-    R -->|approved / out of rounds| D[done ✅]
+    R -->|issues found| F[Product crew<br/>fix issues] --> R
+    R -->|approved| D[Release]
+    H[Human feedback] --> I[Product crew<br/>apply changes] --> R
 ```
 
-### The team (all on `gpt-5.4-mini`)
+The orchestration is a **CrewAI Flow** (`StudioFlow`) that coordinates four kinds of crews:
 
-| Agent | Crew | Tools |
+| Crew | Process | Responsibility |
 |---|---|---|
-| Engineering Lead (**manager**) | module / product crews | delegation only |
-| Software Architect | planning | Context7 (latest Gradio docs) |
-| Backend Engineer | module / product | read, write, edit, run python, unit tests |
-| Frontend Engineer | product | same as backend + smoke test + Context7 |
-| Test Engineer | module / product | same as backend + smoke test |
-| Quality Inspector | review | read, run tests, smoke test (**no write**) |
-| Product Reviewer | review | read, run tests, smoke test (**no write**) → `ReviewVerdict` |
+| Planning | Sequential | Turns requirements into a structured plan (`SystemPlan`) and a design document |
+| Module | Hierarchical | Implements and unit-tests one backend module; one crew per module, run in parallel |
+| Product | Hierarchical | Builds the UI, applies review findings and human feedback, verifies the release |
+| Review | Sequential | Inspects quality and returns a structured verdict (`ReviewVerdict`) |
 
-### Guard rails that make the output reliable
+### The team
 
-- **UI smoke test** (`smoke_test_app`). It builds `app.py` without launching it, calls every event handler with the default values, and fails if a handler raises or returns a different number of values than it has outputs. That is exactly the bug that makes every Gradio box show **"Error"**.
-- **Sandboxed execution.** Code runs in Docker (`ghcr.io/astral-sh/uv`) when Docker is available and falls back to local `uv run`. The container gets its own venv, so the host `.venv` stays untouched.
-- **Flat, safe workspace.** No folders, no path traversal, and `pyproject.toml`/`uv.lock` are protected.
-- **Cost limits.** One cheap model everywhere, `max_iter` caps on every agent, and a review-round budget (default 2).
+| Agent | Role | Capabilities |
+|---|---|---|
+| **Engineering Lead** | Manager of the module and product crews | Delegation only, with no direct file access |
+| **Software Architect** | System design and module boundaries | Live framework documentation via Context7 MCP |
+| **Backend Engineer** | Business logic in pure Python | Read, write, edit and execute code; run tests |
+| **Frontend Engineer** | Gradio user interface | Same as backend, plus UI verification and live docs |
+| **Test Engineer** | Unit tests and defect fixing | Same as backend, plus UI verification |
+| **Quality Inspector** | Independent verification | Read-only: inspect, run tests, verify UI |
+| **Product Reviewer** | Release decision | Read-only; produces the final structured verdict |
 
-## Setup
+Reviewers are intentionally read-only. They have to report problems rather than patch them quietly, which keeps the review honest.
 
-Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), and optionally Docker.
+### Quality safeguards
+
+- **Automated UI verification.** Every generated interface is built headlessly, and each event handler is called with default inputs. The check fails when a handler raises, returns the wrong number of values, or sends an update a component cannot accept. These are the most common reasons a Gradio app shows "Error" in the browser.
+- **Deterministic release rule.** A product is approved only when there are no blocker or major findings. Cosmetic suggestions never block a release.
+- **Safe workspace.** File access is limited to a flat project directory, path traversal is rejected, and project configuration files are protected.
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- Python 3.12 or 3.13
+- [uv](https://docs.astral.sh/uv/)
+- An OpenAI API key
+- Docker (optional, recommended for sandboxed execution)
+
+### Installation
 
 ```bash
-git clone <your-repo-url> engineering-crew-studio
+git clone https://github.com/<your-username>/engineering-crew-studio.git
 cd engineering-crew-studio
-cp .env.example .env        # then put your OPENAI_API_KEY in .env
+cp .env.example .env    # add your OPENAI_API_KEY
 uv sync
 ```
 
+---
+
 ## Usage
 
-### Gradio studio (recommended)
+### Web studio
 
 ```bash
 uv run studio-ui
 ```
 
-1. **Build:** pick an example or write requirements, then click *Build product*.
-2. **Workspace:** read the code, the latest review and the changelog. Click *Launch app* to try the product.
-3. **Iterate:** write feedback (for example "add a chart of portfolio value over time"), then click *Improve product*.
+1. **Build:** write your requirements (or start from an example) and click **Build product**.
+2. **Workspace:** browse the generated code, the latest review and the changelog. Click **Launch app** to try the product.
+3. **Iterate:** describe what to change and click **Improve product**. The team updates the existing code, re-tests it and re-reviews it.
 
 ### Command line
 
 ```bash
-uv run studio-build   --project trading --requirements examples/trading_account.md
+# Build a new product from a requirements file
+uv run studio-build --project trading --requirements examples/trading_account.md
+
+# Improve an existing product with feedback
 uv run studio-improve --project trading --feedback "Add CSV export of the transaction history"
-cd workspaces/trading && uv run app.py   # run the generated product
-uv run studio-plot                        # writes studio_flow.html (flow diagram)
+
+# Run the generated product
+cd workspaces/trading && uv run app.py
+
+# Render the orchestration flow as an interactive diagram
+uv run studio-plot
 ```
 
-### Tests (offline, no API cost)
+### Example requirements
+
+The `examples/` folder includes ready-to-use specifications:
+
+| Example | Description |
+|---|---|
+| `trading_account.md` | Trading simulation account with portfolio valuation and P/L |
+| `expense_splitter.md` | Group expense tracking with balances and settlement suggestions |
+| `habit_tracker.md` | Habit tracking with streaks and completion rates |
+
+---
+
+## Configuration
+
+All settings are read from `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | none | Required |
+| `STUDIO_MODEL` | `openai/gpt-5.4-mini` | Model used by every agent |
+| `STUDIO_MAX_REVIEW_ROUNDS` | `2` | Maximum automatic review → fix cycles per run |
+| `STUDIO_RUNNER` | `auto` | Code execution: `docker`, `local` or `auto` |
+| `STUDIO_USE_CONTEXT7` | `1` | Live framework documentation for the architect and frontend engineer |
+| `STUDIO_AGENT_MAX_ITER` | `25` | Iteration cap per agent |
+| `STUDIO_MANAGER_MAX_ITER` | `20` | Iteration cap for the Engineering Lead |
+
+---
+
+## Generated project structure
+
+Each product lives in its own self-contained uv project:
+
+```
+workspaces/<project>/
+├── REQUIREMENTS.md     # your requirements
+├── DESIGN.md           # architecture by the Software Architect
+├── CHANGELOG.md        # every build, review and feedback round
+├── <module>.py         # backend modules
+├── test_<module>.py    # unit tests
+├── app.py              # Gradio application
+└── .studio/            # plan, review verdicts and run metadata
+```
+
+---
+
+## Repository layout
+
+```
+src/crew_studio/
+├── config/
+│   ├── agents.yaml     # agent roles, goals and backstories
+│   └── tasks.yaml      # task definitions
+├── tools/
+│   ├── workspace_tools.py   # file, execution and test tools
+│   └── smoke_harness.py     # automated UI verification
+├── crews.py            # planning, module, product and review crews
+├── flow.py             # StudioFlow orchestration
+├── models.py           # structured outputs (SystemPlan, ReviewVerdict)
+├── workspace.py        # project workspaces and sandboxed runner
+├── progress.py         # live activity feed from CrewAI events
+├── ui.py               # Gradio web studio
+└── main.py             # CLI entry points
+examples/               # sample requirement specifications
+tests/                  # offline test suite
+```
+
+---
+
+## Testing
+
+The test suite runs fully offline and makes no LLM calls:
 
 ```bash
 uv run python -m unittest discover -s tests -v
 ```
 
-These tests check the flow wiring (parallel waves, review loop, round limit, improve mode keeping files) with fake crews, and check that the smoke harness catches the output-count bug.
+It covers flow orchestration (parallel waves, the review loop, round limits, iterative mode), the release rule, workspace safety, and the UI verification harness.
 
-## Configuration (`.env`)
+---
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `STUDIO_MODEL` | `openai/gpt-5.4-mini` | Model for every agent |
-| `STUDIO_MAX_REVIEW_ROUNDS` | `2` | Automatic review → fix rounds |
-| `STUDIO_RUNNER` | `auto` | `docker`, `local` or `auto` |
-| `STUDIO_USE_CONTEXT7` | `1` | Live Gradio docs for the architect and frontend engineer |
-| `STUDIO_AGENT_MAX_ITER` / `STUDIO_MANAGER_MAX_ITER` | `25` / `20` | Per-agent iteration caps |
+## Tech stack
 
-## Project layout
+- **[CrewAI](https://crewai.com)** for agents, crews, hierarchical processes and flows
+- **[Gradio](https://gradio.app)** for the studio interface and the generated product UIs
+- **[uv](https://docs.astral.sh/uv/)** for dependency and environment management
+- **[Docker](https://www.docker.com/)** for sandboxed code execution
+- **[Context7 MCP](https://context7.com)** for up-to-date framework documentation
 
-```
-src/crew_studio/
-  config/agents.yaml   role, goal and backstory for the 7 agents
-  config/tasks.yaml    task prompts (planning, module, product, review)
-  crews.py             planning / module (hierarchical) / product (hierarchical) / review crews
-  flow.py              StudioFlow: plan → parallel module crews → UI → review loop
-  workspace.py         persistent per-product uv workspaces + Docker/local runner
-  tools/               workspace-bound tools + UI smoke-test harness
-  progress.py          live activity feed (CrewAI event bus → UI)
-  ui.py                Gradio studio
-  main.py              CLI entry points
-examples/              sample requirements
-tests/                 offline tests
-workspaces/            generated products (git-ignored)
-```
+---
+
+## License
+
+Released under the MIT License.

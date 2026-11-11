@@ -1,10 +1,9 @@
 """A workspace is one product the team is building.
 
 Each workspace is a self-contained uv project (with gradio installed) under
-`workspaces/<name>/`. Unlike the original course version we do NOT wipe it on
-every run: a fresh build creates it, and later "improve" runs keep working on
-the same files, so you can iterate with the team like you would with a human
-engineering team.
+`workspaces/<name>/`. Workspaces persist between runs: a fresh build creates
+it, and later "improve" runs keep working on the same files, so you can iterate
+with the team like you would with a human engineering team.
 
 Layout:
     workspaces/<name>/

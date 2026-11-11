@@ -1,0 +1,140 @@
+# Placeholders in single braces are filled from the kickoff inputs.
+
+# --------------------------------------------------------------- planning crew
+plan_system:
+  description: >
+    Design the system for these business requirements:
+
+    ---- REQUIREMENTS ----
+    {requirements}
+    ----------------------
+
+    Produce a plan with:
+    1. 1 to 4 backend modules (fewer is better). Each module is one flat .py file in the same
+       directory, standard library only, buildable and unit-testable on its own. Give every
+       module an exact public API: classes, dataclasses, method signatures with type hints,
+       custom exceptions, return shapes. If a module needs another module, list it in depends_on
+       and keep that dependency small and explicit.
+    2. A UI plan for app.py (Gradio 6, single user): sections, inputs, outputs, which backend
+       call each button makes, and how errors and empty inputs are shown.
+    3. design_markdown: the full design document for the engineers (architecture overview,
+       data model, every module's API, UI layout, testing strategy, edge cases from the
+       requirements). Signatures only, no implementation code.
+
+    Constraints the design must respect: flat directory, no packages, Python 3.13, standard
+    library for the backend, gradio is the only third-party package, app.py must define
+    build_app() returning gr.Blocks and only call launch() under if __name__ == "__main__".
+  expected_output: >
+    A SystemPlan with modules, ui_plan and the complete design_markdown.
+
+# ----------------------------------------------------------------- module crew
+implement_module:
+  description: >
+    Get module "{module_name}" ({module_file}) implemented for {product_name}.
+
+    Module brief:
+    {module_brief}
+
+    Delegate this to the Backend Engineer. Your delegation message must tell them to:
+    read REQUIREMENTS.md and DESIGN.md first; implement {module_file} with exactly the public API
+    above (standard library only); write a tiny throwaway script that imports the module and
+    exercises the main paths, run it with run_python, fix any error, and report the output.
+    Other engineers are building other modules at the same time: they must only write
+    {module_file} (plus their scratch script) and must not touch any other file.
+  expected_output: >
+    Confirmation that {module_file} exists and imports, with the run output that proves it.
+
+test_module:
+  description: >
+    Get module "{module_name}" covered by unit tests and make them pass.
+
+    Delegate to the Test Engineer. Tell them to: read DESIGN.md and {module_file}; write
+    {test_file} with the stdlib unittest module covering happy paths, every validation rule and
+    edge case for this module; run them with run_unit_tests; fix defects in {module_file} if the
+    code is wrong (keep public signatures unchanged); repeat until all tests pass, then report the
+    final test summary. They must only modify {module_file} and {test_file}.
+    If the engineer reports failures, delegate again with the exact failing output until green.
+  expected_output: >
+    The final unittest summary for {test_file} showing all tests passing, plus a one-paragraph
+    status of the module.
+
+# ---------------------------------------------------------------- product crew
+build_ui:
+  description: >
+    The backend modules for {product_name} are done and tested. Files in the workspace:
+    {files}
+
+    UI plan from the design:
+    {ui_plan}
+
+    Delegate to the Frontend Engineer. Tell them to: read REQUIREMENTS.md, DESIGN.md and every
+    backend module they will call; write app.py with build_app() returning gr.Blocks and
+    launch() only under the main guard; use the backend public API (no duplicated business logic);
+    make every handler catch exceptions and show them in a status component; return exactly one
+    value per output component; then run smoke_test_app and fix app.py until it prints PASS.
+    The UI must look professional in light and dark mode.
+  expected_output: >
+    app.py written and the smoke_test_app output showing PASS.
+
+apply_feedback:
+  description: >
+    Improve {product_name} based on this feedback (round {round}):
+
+    ---- FEEDBACK ----
+    {feedback}
+    ------------------
+
+    Current files: {files}
+
+    Read the feedback carefully, decide which engineer should handle each point (backend logic ->
+    Backend Engineer, UI -> Frontend Engineer, tests -> Test Engineer) and delegate. Each delegation
+    must quote the exact feedback points, name the files to change, and say: read the current file
+    before editing, prefer replace_in_file for small changes, do not break existing behaviour.
+    If a change touches the backend API, also make sure app.py and the tests are updated.
+    If the feedback adds new requirements, ask the relevant engineer to also update DESIGN.md.
+  expected_output: >
+    A list of every feedback point and what was changed for it (file + short description).
+
+verify_release:
+  description: >
+    Make sure {product_name} is releasable after the latest changes.
+    Delegate to the Test Engineer: run run_unit_tests and smoke_test_app, fix anything that fails
+    (backend bugs in the module, UI wiring bugs in app.py), and report both final outputs.
+    If either still fails, delegate again with the failing output. Finish only when both pass,
+    or after three attempts report honestly what still fails.
+  expected_output: >
+    The final run_unit_tests summary and smoke_test_app result, and a short release note.
+
+# ----------------------------------------------------------------- review crew
+inspect_quality:
+  description: >
+    Inspect {product_name} (review round {round}).
+    1. list_files, then read REQUIREMENTS.md, DESIGN.md, every module, every test and app.py.
+    2. Run run_unit_tests and smoke_test_app and record the exact results.
+    3. Go through the requirements one by one and check the code really implements each of them,
+       including validation rules (e.g. no negative balances) and error handling in the UI.
+    4. Look for bugs: wrong calculations, unhandled exceptions, handlers whose return values do
+       not match their outputs, tests that assert the wrong thing, dead or duplicated logic.
+    Report only what you observed, with evidence.
+  expected_output: >
+    A QA report in markdown: test results, smoke test result, a requirements checklist
+    (met / partly / missing with evidence) and a list of defects with file and suggested fix.
+
+product_verdict:
+  description: >
+    Using the Quality Inspector's report and your own reading of the files, decide whether
+    {product_name} is ready for the user.
+
+    Original requirements:
+    {requirements}
+
+    Human feedback being addressed this round (may be empty):
+    {feedback}
+
+    Rules: approved = true only if unit tests pass, the smoke test passes, every requirement and
+    every human feedback point is met, and there are no blocker or major issues. Classify each
+    issue as blocker (broken / crashes / tests fail), major (requirement or feedback not met,
+    wrong result) or minor (polish). Give each issue a concrete fix an engineer can act on.
+    Keep it to the 8 most important issues.
+  expected_output: >
+    A ReviewVerdict.

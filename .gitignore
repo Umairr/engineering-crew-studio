@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Generated products live here; each one is its own uv project
+workspaces/
+
+# CrewAI / flow artefacts
+*.db
+crewai_flow.html
+studio_flow.html
